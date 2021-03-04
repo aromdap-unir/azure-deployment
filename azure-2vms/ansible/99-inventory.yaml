@@ -1,0 +1,17 @@
+all:
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_user: adminUsername
+  hosts:
+    40.114.197.169:
+    40.113.120.178:
+  children:
+    master-nfs:
+      hosts:
+        40.114.197.169:
+    worker:
+      hosts:
+        40.113.120.178:
+
+
+

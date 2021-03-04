@@ -1,0 +1,13 @@
+- hosts: workers
+  become: yes
+
+  tasks:
+    - name: Open ports
+      command: firewall-cmd --zone=public --permanent --add-port={10250,30000-32767}/tcp
+      command: firewall-cmd --reload
+
+    - name: Run join command script
+      script: /home/adrian/Documents/UNIR/Practice/caso-practico-2/azure-deployment/ansible/config/kubeadm.sh
+
+    - name: Deploying ingress controller (1/)
+      command: kubectl apply -f https://raw.githubusercontent.com/haproxytech/kubernetes-ingress/v1.5/deploy/haproxy-ingress.yaml

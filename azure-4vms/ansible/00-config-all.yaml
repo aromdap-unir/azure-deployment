@@ -1,0 +1,33 @@
+- hosts: all
+  become: yes
+
+  tasks:
+    - name: Update all Centos8 virtual machines
+      dnf: 
+        name: "*"
+        state: latest
+
+    - name: Set time/date zone of virtual machines to Europe/Madrid
+        timezone: Europe/Madrid
+
+    - name: Install and enable chronyd
+      dnf: 
+        name: chrony
+        state: latest
+      systemd:
+        name: chronyd
+        state: started
+        enabled: yes
+      command: timedatectl set-ntp true
+
+    - name: Disable SElinux
+      selinux:
+        state: disabled
+
+    - name: Instal NFS modues and wget
+      dnf: 
+        name: ['nfs-utils','nfs4-acl-tools','wget']
+        state: latest
+
+
+  

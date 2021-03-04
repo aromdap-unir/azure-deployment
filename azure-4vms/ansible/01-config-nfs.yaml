@@ -1,0 +1,66 @@
+- hosts: nfs
+  become: yes
+  
+  tasks:
+    - name: Unmount disk
+      mount:
+        path: /dev/sdb1
+        state: unmounted
+
+    - name: Create the Volume group
+      lvg:
+        vg: data_vg
+        pvs: /dev/sdb1
+ 
+    - name: Create the Logical Volume
+      lvol:
+        vg: data_vg
+        lv: nfs_lv
+        size: 10g
+    
+    - name: Create a filesystem on lvm "/dev/data_vg/nfs_lv"
+      filesystem:
+        fstype: xfs
+        dev: /dev/data_vg/nfs_lv
+
+    - name: Mount the logical Volume
+      mount:
+        path: /srv/nfs
+        src: /dev/data_vg/nfs_lv
+        fstype: xfs
+        state: mounted
+
+    - name: Installation NFS utilities
+      dnf:
+        name: ['nfs-utils','net-tools']
+        state: latest
+
+    - name: Enable and start nfs-server
+      systemd:
+        name: nfs-server
+        state: started
+        enabled: yes
+
+    - name: Add master and workers to /etc/exports
+      blockinfile:
+        path: /etc/exports
+        block: |
+          /srv/nfs    20.73.57.209(rw,sync)
+          /srv/nfs    20.71.32.135(rw,sync)
+          /srv/nfs    20.67.101.18(rw,sync)
+
+    - name: Apply configuration to /etc/exports
+      command: exportfs -r
+      command: exportfs -s
+
+    - name: Enable firewalld
+      systemd:
+        name: firewalld
+        state: started
+        enabled: yes
+
+    - name: Modify firewalld with new services
+      command: firewall-cmd --permanent --add-service=nfs
+      command: firewall-cmd --permanent --add-service=rpc-bind
+      command: firewall-cmd --permanent --add-service=mountd
+      command: firewall-cmd --reload

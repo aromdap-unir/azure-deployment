@@ -1,0 +1,93 @@
+- hosts: master-nfs:worker
+  become: yes
+
+  tasks:
+    - name: Configure the DNS in the host file 
+      copy:
+        src: ./config/02-hosts.cfg
+        dest: /etc/hosts
+    
+    - name: Enable br_netfilter module
+      modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Enable firewalld
+      systemd:
+        name: firewalld
+        state: started
+        enabled: yes
+
+    - name: Activate transparent masquerading
+      command: firewall-cmd --add-masquerade --permanent
+      command: firewall-cmd --reload
+
+    - name: Check exist k8s.conf (1/4)
+      stat:
+        path: /etc/sysctl.d/k8s.conf
+      register: stat_result
+
+    - name: Create file if it does not exist (2/4)
+      file:
+        path: /etc/sysctl.d/k8s.conf
+        state: touch
+        mode: u+rw,g-wx,o-rwx
+      when: not stat_result.stat.exists
+
+    - name: Update kernel settings and apply changes (3/4)
+      copy:
+        src: ./config/02-hosts.cfg
+        dest: /etc/sysctl.d/k8s.conf
+
+    - name: Update kernel settings and apply changes (4/4)
+      command: sysctl --system
+
+    - name: Turn off swap (1/2)
+      command: swapoff -a
+
+    - name: Turn off swap (2/2)
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+        replace: '# \1'
+
+    - name: Installing docker (1/2)
+      command: dnf config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo
+    
+    - name: Installing docker (2/3)
+      dnf:
+        name: ['containerd.io','docker-ce-19.03.14-3.el8']
+        
+    - name: Installing docker (3/3)
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Check exist kubernetes.repo (1/5)
+      stat:
+        path: /etc/yum.repos.d/kubernetes.repo
+      register: stat_result
+
+    - name: Create file if it does not exist (2/5)
+      file:
+        path: /etc/yum.repos.d/kubernetes.repo
+        state: touch
+        mode: u+rw,g-wx,o-rwx
+      when: not stat_result.stat.exists
+
+    - name: Place information in file (3/5)
+      copy:
+        src: ./config/02-kubernetes.repo.cfg
+        dest: /etc/yum.repos.d/kubernetes.repo
+        
+    - name: Install Kubernetes (4/5)
+      dnf:
+        name: ['kubelet','kubeadm','kubectl']
+        disable_excludes: kubernetes
+
+    - name: Enable Kubernetes (5/5)
+      systemd:
+        name: kubelet
+        state: started
+        enabled: yes

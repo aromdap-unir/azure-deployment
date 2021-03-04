@@ -1,0 +1,69 @@
+- hosts: master
+  become: yes
+
+  tasks:
+    - name: Configure firewalld to access Kubernetes services
+      command: firewall-cmd --permanent --add-port=6443/tcp 
+      command: firewall-cmd --permanent --add-port=2379-2380/tcp
+      command: firewall-cmd --permanent --add-port=10250/tcp
+      command: firewall-cmd --permanent --add-port=10251/tcp
+      command: firewall-cmd --permanent --add-port=10252/tcp
+      command: firewall-cmd --permanent --add-port=10255/tcp
+      command: firewall-cmd --reload
+
+    - name: Pull kubeadm images
+      command: kubeadm config images pull
+
+    - name: Allow traffic from workers
+      command: firewall-cmd --permanent --add-rich-rule 'rule family=ipv4 source address=20.71.32.135/32 accept'
+      command: firewall-cmd --permanent --add-rich-rule 'rule family=ipv4 source address=20.67.101.18/32 accept'
+      command: firewall-cmd --reload
+
+    - name: Allow traffic from containers
+      command: firewall-cmd --zone=public --permanent --add-rich-rule 'rule family=ipv4 source address=172.17.0.0/16 accept'
+      command: firewall-cmd --reload
+
+    - name: Install CNI plugin and configure the network for the PODs (1/5)
+      command: kubeadm init --pod-network-cidr 192.169.0.0/16 --ignore-preflight-errors=all 
+      register: init_output
+
+    - name: Copy join command to output file
+      become: false
+      local_action: 
+        module: copy
+        content: |
+          #!/bin/sh
+          {{ init_output.stdout_lines[-2] }}
+          {{ init_output.stdout_lines[-1] }}
+        dest: ./config/kubeadm.sh
+ 
+    - name: Authorise root user to access the cluster (1/3)
+      command: mkdir -p $HOME/.kube
+
+    - name: Authorise root user to access the cluster (2/3)
+      copy: 
+        src: /etc/kubernetes/admin.conf 
+        dest: $HOME/.kube/config
+        remote_src: yes
+
+    - name: Authorise root user to access the cluster (3/3)
+      file:
+        path: $HOME/.kube/config
+        group: "{{ ansible_facts.env.SUDO_GID }}" 
+        owner: "{{ ansible_facts.env.SUDO_UID }}"
+
+    - name: Install SDN (Tigera) (1/4)
+      command: kubectl create -f https://docs.projectcalico.org/manifests/tigera-operator.yaml
+
+    - name: Install SDN (Calico) (2/4)
+      command: wget https://docs.projectcalico.org/manifests/custom-resources.yaml
+
+    - name: Install SDN (Replace CIDR IP) (3/4)
+      replace:
+        dest: custom-resources.yaml
+        regexp: '192.168.0.0'
+        replace: '192.169.0.0'
+
+    - name: Install SDN (Apply custom-resources.yaml) (4/4)
+      command: kubectl apply -f custom-resources.yaml
+
